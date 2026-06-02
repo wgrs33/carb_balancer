@@ -126,12 +126,35 @@ Raw ADC sample
   → ring buffer   (256 entries per channel, each entry: {value, timestamp_ms})
 ```
 
-### RPM detection
-- RPM is estimated from the vacuum signal itself — no separate tachometer input
-- Firmware tracks the interval between successive vacuum minima on one reference channel
-- For a 4-stroke engine: one engine cycle = 2 crankshaft revolutions
-  → `cycle_ms = 120,000 / RPM`
-- RPM is recalculated continuously and updated in the `AdcReader`
+### Calibration model
+- **Master channel** (= `reference_cylinder`) is never corrected — it is the standard
+- **Non-master channels** each have a 256-entry `int16_t` lookup table in NVS
+- Table index = `raw_adc >> 7` (bin width ≈ 128 ADC counts)
+- Each entry stores: `correction = master_reading − channel_reading` at that ADC bin
+- Applied as: `calibrated = raw + cal_table[channel][raw >> 7]`
+
+### Calibration procedure
+1. Connect all sensors to the same vacuum source
+2. Run calibration mode from web UI (per non-master channel)
+3. Firmware samples master and target channel simultaneously in bursts
+4. `calibration_value = master_raw − channel_raw`, accumulated with EMA per bin
+5. Result saved to NVS via `Settings::saveCalTable(channel)`
+
+### EMA smoothing
+- Bit-shift factor `damping` (0-16): `ema_acc += (new_shifted − ema_acc) >> damping`
+- `new_shifted = calibrated_value << 16` (sub-count precision)
+- `displayed = ema_acc >> 16`
+- `damping=8` (default, α ≈ 0.004)
+- Configurable via web UI, saved to NVS
+
+### RPM detection (valley detection with hysteresis)
+- Runs on the reference channel only
+- Direction is confirmed after `kRpmHysteresis = 2` consecutive samples in the same direction
+- A valley (minimum) is detected at the transition from descending → ascending
+- `cycle_ms` = time between successive valleys
+- `RPM = 120000 / cycle_ms` (4-stroke: one intake event per 2 crank revolutions)
+- RPM is smoothed with its own EMA (`rpm_damping`, default 10)
+- Timeout: no valley for 2 s → RPM reset to 0
 
 ### Displayed value — minimum EMA within auto-calculated window
 - `window_ms = cycle_ms × (1 + margin_percent / 100)`
@@ -141,9 +164,66 @@ Raw ADC sample
 - This captures the deepest vacuum pull of each cylinder's intake stroke
 - Cylinders with a higher minimum (less vacuum) indicate a carb that is open too far or has a leak
 
-### Broadcast
-- `minReading()` values broadcast over WebSocket at the configured update interval
-- Serial Plotter prints the same minimum values in Arduino Serial Plotter format
+### ADC → kPa conversion (MPX4250AP + 10 kΩ/20 kΩ divider + ADS1115 GAIN_ONE)
+```
+P_kPa = ADC × 0.009375 + 10.0
+```
+- At ADC = 0:      P = 10.0 kPa
+- At ADC = 9707:   P ≈ 101.0 kPa  (atmospheric)
+- At ADC = 26344:  P ≈ 257.0 kPa  (max at 3.3 V input)
+
+### Broadcast (WebSocket JSON)
+```json
+{
+  "rpm": 820,
+  "ref": 0,
+  "cylinders": [
+    { "kpa": 68.4, "delta_kpa":  0.0 },
+    { "kpa": 67.1, "delta_kpa": -1.3 },
+    { "kpa": 69.0, "delta_kpa":  0.6 },
+    { "kpa": 68.8, "delta_kpa":  0.4 }
+  ]
+}
+```
+- Broadcast at `update_interval_ms` (default 100 ms)
+- Serial Plotter prints same `minReading()` values in Arduino Serial Plotter format
+
+### Settings WebSocket commands (browser → firmware)
+
+```json
+{ "cmd": "get_settings" }
+```
+Firmware replies to the requesting client only:
+```json
+{
+  "type": "settings",
+  "cylinder_count": 4, "reference_cylinder": 0,
+  "damping": 8, "rpm_damping": 10,
+  "window_margin_percent": 20, "update_interval_ms": 100,
+  "ap_ssid": "CarbBalancer", "ap_password": "balance1"
+}
+```
+
+```json
+{
+  "cmd": "set_settings",
+  "cylinder_count": 4, "reference_cylinder": 0,
+  "damping": 8, "rpm_damping": 10,
+  "window_margin_percent": 20, "update_interval_ms": 100,
+  "ap_ssid": "CarbBalancer", "ap_password": "balance1"
+}
+```
+Firmware applies, saves to NVS, reconfigures WiFi AP, then broadcasts to all clients:
+```json
+{ "type": "settings_saved" }
+```
+
+### Settings REST API
+
+| Method | Path            | Body / Response                      |
+|--------|-----------------|--------------------------------------|
+| GET    | `/api/settings` | JSON object with all settings fields |
+| POST   | `/api/settings` | JSON object (partial update OK) → `{"ok":true}` |
 
 ---
 
