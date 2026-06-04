@@ -29,8 +29,8 @@ env.Append(CPPPATH=[str(gen_dir)])           # noqa: F821
 # Map:  output_header -> (C variable name, source file relative to project_dir)
 files = {
     "WebUI.h": ("HTML", "web/index.html"),
-    # "WebCSS.h": ("CSS", "web/styles.css"),
-    # "WebJS.h":  ("JS",  "web/script.js"),
+    "WebCSS.h": ("CSS", "web/styles.css"),
+    "WebJS.h":  ("JS",  "web/script.js"),
 }
 
 # ---------------------------------------------------------------------------

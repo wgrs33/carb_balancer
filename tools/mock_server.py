@@ -158,6 +158,13 @@ async def handle_index(request: web.Request) -> web.Response:
     return web.Response(text=html, content_type="text/html")
 
 
+async def handle_static(request: web.Request) -> web.Response:
+    name = request.match_info["name"]
+    path = ROOT / "web" / name
+    ctype = "text/css" if name.endswith(".css") else "application/javascript"
+    return web.Response(text=path.read_text(), content_type=ctype)
+
+
 async def handle_ws(request: web.Request) -> web.WebSocketResponse:
     state: State = request.app["state"]
     ws = web.WebSocketResponse()
@@ -225,6 +232,7 @@ def main() -> None:
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
     app.router.add_get("/",              handle_index)
+    app.router.add_get("/{name:(styles\\.css|script\\.js)}", handle_static)
     app.router.add_get("/ws",            handle_ws)
     app.router.add_get("/api/settings",  handle_api_settings_get)
     app.router.add_post("/api/settings", handle_api_settings_post)

@@ -5,6 +5,8 @@
 #include <WiFi.h>
 
 #include "WebUI.h"
+#include "WebCSS.h"
+#include "WebJS.h"
 
 #include <array>
 
@@ -138,6 +140,14 @@ void WebServerManager::applySettingsDoc(const JsonDocument& doc) {
 void WebServerManager::setupRoutes() {
     server_.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
         request->send_P(200, "text/html", HTML);
+    });
+
+    server_.on("/styles.css", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send_P(200, "text/css", CSS);
+    });
+
+    server_.on("/script.js", HTTP_GET, [](AsyncWebServerRequest* request) {
+        request->send_P(200, "application/javascript", JS);
     });
 
     server_.on("/api/settings", HTTP_GET, [this](AsyncWebServerRequest* request) {
