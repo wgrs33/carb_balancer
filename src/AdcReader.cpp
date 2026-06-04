@@ -5,9 +5,9 @@ static void IRAM_ATTR adcRdyISR() {
     if (g_adc_instance) g_adc_instance->onConversionReady();
 }
 
-AdcReader::AdcReader(const Settings& settings, uint8_t rdy_pin, uint8_t channel_count)
+AdcReader::AdcReader(const Settings& settings, uint8_t rdy_pin)
     : rdy_pin_(rdy_pin),
-      channel_count_(channel_count),
+      channel_mask_(0x0F),
       running_(false),
       current_adc_channel_(0) {}
 
@@ -29,9 +29,13 @@ bool AdcReader::isRunning() const {
     return running_;
 }
 
-void AdcReader::start() {
+void AdcReader::start(uint8_t channel_mask) {
+    channel_mask_ = channel_mask & 0x0F;
+    if (channel_mask_ == 0) channel_mask_ = 0x0F; // fallback: all channels
     for (uint8_t i = 0; i < kMaxCylinders; i++) ema_acc_[i] = 0;
-    current_adc_channel_ = 0;
+    for (uint8_t i = 0; i < kMaxCylinders; i++) {
+        if (channel_mask_ & (1 << i)) { current_adc_channel_ = i; break; }
+    }
     conversion_ready_.store(false, std::memory_order_relaxed);
     running_ = true;
 }
@@ -62,7 +66,10 @@ void AdcReader::update() {
         on_sample_(ch, frame);
     }
 
-    current_adc_channel_ = (current_adc_channel_ + 1) % channel_count_;
+    for (uint8_t i = 0; i < kMaxCylinders; i++) {
+        current_adc_channel_ = (current_adc_channel_ + 1) % kMaxCylinders;
+        if (channel_mask_ & (1 << current_adc_channel_)) break;
+    }
 }
 
 void AdcReader::startConversion() {

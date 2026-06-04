@@ -36,10 +36,10 @@ public:
     using SampleCallback = std::function<void(uint8_t channel, const RawFrame& frame)>;
 
     /**
-     * @param settings  Application settings (cylinder count, cal tables, damping, margin).
+     * @param settings  Application settings (channel_mask is read on each start()).
      * @param rdy_pin   GPIO connected to ADS1115 ALRT/RDY (active-low).
      */
-    explicit AdcReader(const Settings& settings, uint8_t rdy_pin, uint8_t channel_count = 4);
+    explicit AdcReader(const Settings& settings, uint8_t rdy_pin);
 
     /** @brief Initialise I2C and configure ADS1115. */
     bool begin();
@@ -47,8 +47,8 @@ public:
     /** @brief Check if the ADC reader is running. */
     bool isRunning() const;
 
-    /** @brief Start ADC conversions. Resets EMA accumulators. */
-    void start();
+    /** @brief Start ADC conversions. Resets EMA accumulators and cycles only through set bits in channel_mask. */
+    void start(uint8_t channel_mask);
 
     /** @brief Stop ADC conversions. */
     void stop();
@@ -68,7 +68,7 @@ public:
 private:
     Adafruit_ADS1115 ads_;
     uint8_t          rdy_pin_;
-    uint8_t          channel_count_;
+    uint8_t          channel_mask_;
     bool             running_;
     uint8_t          current_adc_channel_;
 

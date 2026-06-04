@@ -46,20 +46,27 @@ void WebServerManager::broadcastData() {
     if (ws_.count() == 0) return;
 
     static std::array<RawFrame, 256> samples;
-    uint8_t count = settings_frame_.cylinder_count;
-    const uint8_t ref = settings_frame_.reference_cylinder;
+    const uint8_t mask = settings_frame_.channel_mask;
+    const uint8_t ref  = settings_frame_.reference_channel;
 
     JsonDocument doc;
     doc["type"] = "wave";
 
     uint32_t t0 = 0, dt = 5;
     JsonArray chs = doc["chs"].to<JsonArray>();
-    for (uint8_t ch = 0; ch < count; ch++) {
+    for (uint8_t ch = 0; ch < kMaxCylinders; ch++) {
+        if (!(mask & (1 << ch))) {
+            chs.add(nullptr);
+            continue;
+        }
         auto n = adc_sample_queue_[ch].read_n(samples.data(), samples.size());
-        if (n == 0) continue;
-        if (ch == ref && n > 1) {
+        if (n == 0) {
+            chs.add(nullptr);
+            continue;
+        }
+        if (ch == ref) {
             t0 = samples[0].timestamp_us;
-            dt = (samples[n - 1].timestamp_us - samples[0].timestamp_us) / (n - 1);
+            dt = n > 1 ? (samples[n - 1].timestamp_us - samples[0].timestamp_us) / (n - 1) : 0;
         }
         JsonArray arr = chs.add<JsonArray>();
         for (uint8_t i = 0; i < n; i++) {
@@ -90,8 +97,8 @@ void WebServerManager::setupWifi() {
 }
 
 void WebServerManager::buildSettingsJson(JsonDocument& doc) {
-    doc["cylinder_count"]        = settings_frame_.cylinder_count;
-    doc["reference_cylinder"]    = settings_frame_.reference_cylinder;
+    doc["channel_mask"]          = settings_frame_.channel_mask;
+    doc["reference_channel"]     = settings_frame_.reference_channel;
     doc["damping"]               = settings_frame_.damping;
     doc["update_interval_ms"]    = settings_frame_.update_interval_ms;
     doc["ap_ssid"]               = settings_frame_.ap_ssid;
@@ -99,10 +106,15 @@ void WebServerManager::buildSettingsJson(JsonDocument& doc) {
 }
 
 void WebServerManager::applySettingsDoc(const JsonDocument& doc) {
-    if (!doc["cylinder_count"].isNull())
-        settings_frame_.cylinder_count = doc["cylinder_count"].as<uint8_t>();
-    if (!doc["reference_cylinder"].isNull())
-        settings_frame_.reference_cylinder = doc["reference_cylinder"].as<uint8_t>();
+    if (!doc["channel_mask"].isNull()) {
+        uint8_t mask = doc["channel_mask"].as<uint8_t>() & 0x0F;
+        if (mask != 0) settings_frame_.channel_mask = mask;
+    }
+    if (!doc["reference_channel"].isNull()) {
+        uint8_t ref = doc["reference_channel"].as<uint8_t>();
+        if (ref < kMaxCylinders && (settings_frame_.channel_mask & (1 << ref)))
+            settings_frame_.reference_channel = ref;
+    }
     if (!doc["damping"].isNull())
         settings_frame_.damping = doc["damping"].as<uint8_t>();
     if (!doc["update_interval_ms"].isNull())
@@ -125,7 +137,7 @@ void WebServerManager::applySettingsDoc(const JsonDocument& doc) {
 
 void WebServerManager::setupRoutes() {
     server_.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
-        request->send_P(200, "text/html", WEB_UI_HTML);
+        request->send_P(200, "text/html", HTML);
     });
 
     server_.on("/api/settings", HTTP_GET, [this](AsyncWebServerRequest* request) {

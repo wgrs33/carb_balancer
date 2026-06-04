@@ -47,11 +47,14 @@ public:
     /** @brief Persist only the calibration table for one channel (called after calibration). */
     void saveCalTable(uint8_t channel);
 
-    // --- cylinder config ---
-    uint8_t cylinderCount() const { return data_.cylinder_count; }
-    void setCylinderCount(uint8_t count);
+    // --- channel config ---
+    uint8_t channelMask() const { return data_.channel_mask; }
+    /** @brief Set active channels. Mask must have at least one bit set in [0:3].
+     *  If the current reference channel is no longer active, resets to the lowest active channel. */
+    void setChannelMask(uint8_t mask);
 
-    void setReferenceCylinder(uint8_t index);
+    /** @brief Set reference channel. Index must be set in channel_mask. */
+    void setReferenceChannel(uint8_t index);
 
     // --- calibration table ---
     /** @brief Get calibration correction for a channel at ADC bin index (0..255). */

@@ -3,8 +3,8 @@
 #include <cstdint>
 
 struct SettingsFrame {
-    uint8_t  cylinder_count;
-    uint8_t  reference_cylinder;
+    uint8_t  channel_mask;      ///< Active channels bitmask (bits 0-3 map to AIN0-AIN3)
+    uint8_t  reference_channel; ///< Reference channel index; must be a set bit in channel_mask
     uint8_t  damping;
     uint32_t update_interval_ms;
     char ap_ssid[56];

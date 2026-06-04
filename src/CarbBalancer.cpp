@@ -53,7 +53,7 @@ void CarbBalancer::update() {
 void CarbBalancer::handleCommand(CommandFrame& frame) {
     switch(frame.cmd) {
         case Command::StartMeasurement:
-            adc_reader_.start();
+            adc_reader_.start(settings_.data().channel_mask);
             Serial.println("Adc started");
             led_.setState(LedController::State::kMeasuring);
             Serial.println("LED set");
