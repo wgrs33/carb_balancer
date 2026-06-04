@@ -32,7 +32,6 @@ bool AdcReader::isRunning() const {
 void AdcReader::start(uint8_t channel_mask) {
     channel_mask_ = channel_mask & 0x0F;
     if (channel_mask_ == 0) channel_mask_ = 0x0F; // fallback: all channels
-    for (uint8_t i = 0; i < kMaxCylinders; i++) ema_acc_[i] = 0;
     for (uint8_t i = 0; i < kMaxCylinders; i++) {
         if (channel_mask_ & (1 << i)) { current_adc_channel_ = i; break; }
     }
@@ -59,10 +58,8 @@ void AdcReader::update() {
     int16_t  raw = ads_.getLastConversionResults();
     uint8_t  ch  = current_adc_channel_;
 
-    ema_acc_[ch] += static_cast<uint32_t>(raw) - (ema_acc_[ch] >> kEmaShift);
-
     if (on_sample_) {
-        RawFrame frame{static_cast<uint16_t>(ema_acc_[ch] >> kEmaShift), ts};
+        RawFrame frame{static_cast<uint16_t>(raw), ts};
         on_sample_(ch, frame);
     }
 

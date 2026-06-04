@@ -25,15 +25,8 @@ void webServerTask(void *pvParameters) {
     web_server->setOnStop([]() {
         CommandFrame frame;
         frame.cmd = Command::StopMeasurement;
-        command_queue.push(frame); // send command to stop ADC
-        Serial.println("Command: StopMeasurement");
-    });
-
-    web_server->setOnSettingsUpdate([](SettingsFrame& data) {
-        CommandFrame frame;
-        frame.cmd = Command::UpdateSettings;
-        frame.params.settings = data;
         command_queue.push(frame);
+        Serial.println("Command: StopMeasurement");
     });
 
     for (;;) {

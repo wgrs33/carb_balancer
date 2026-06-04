@@ -12,27 +12,13 @@
 /**
  * @brief Drives the ADS1115 in single-shot mode, cycling through active channels.
  *
- * Signal processing per sample (channel):
- *   raw ADC
- *     → calibration lookup  (cal_table[channel][raw >> 7] added to raw)
- *     → EMA bit-shift       (ema_acc += (new - ema_acc) >> damping, 32-bit accumulator)
- *     → on_sample_ callback (delivers {value, timestamp_us} to the consumer)
- *
- * RPM detection on reference channel:
- *   Valley detection with hysteresis: kRpmHysteresis consecutive samples must confirm each
- *   direction change before a valley is recorded. A valley is accepted only when the
- *   peak-to-valley amplitude ≥ kRpmMinAmplitudeAdc (20 kPa) to reject noise and idle signals.
- *   Interval between accepted valleys → RPM.  window_ms = cycle_ms × (1 + margin/100)
- *
- * ADC → kPa (MPX4250AP + 12kΩ/20kΩ divider + ADS1115 GAIN_ONE):
- *   P_kPa = adc × 0.01 + 10.0
+ * Delivers raw ADC samples to the on_sample_ callback with no processing applied.
+ * All signal processing (EMA, RPM detection, unit conversion) is done in the Web UI.
  *
  * ISR sets a flag only — I2C reads happen in update() (main loop context).
  */
 class AdcReader {
 public:
-    static constexpr uint8_t kEmaShift = 1;  ///< EMA smoothing: alpha = 1/2^kEmaShift
-
     using SampleCallback = std::function<void(uint8_t channel, const RawFrame& frame)>;
 
     /**
@@ -47,7 +33,7 @@ public:
     /** @brief Check if the ADC reader is running. */
     bool isRunning() const;
 
-    /** @brief Start ADC conversions. Resets EMA accumulators and cycles only through set bits in channel_mask. */
+    /** @brief Start ADC conversions. Cycles through set bits in channel_mask. */
     void start(uint8_t channel_mask);
 
     /** @brief Stop ADC conversions. */
@@ -59,7 +45,7 @@ public:
     /** @brief Called by the ALRT/RDY ISR — captures timestamp and sets flag, no I2C. */
     void onConversionReady();
 
-    /** @brief Call from the main loop — reads result via I2C, applies EMA, fires callback. */
+    /** @brief Call from the main loop — reads result via I2C, fires callback with raw value. */
     void update();
 
     /** @brief Start an ADC conversion on the current channel. */
@@ -75,6 +61,5 @@ private:
     std::atomic<bool>     conversion_ready_{false};
     std::atomic<uint32_t> conversion_timestamp_us_{0};
 
-    uint32_t     ema_acc_[kMaxCylinders]{};
     SampleCallback on_sample_;
 };

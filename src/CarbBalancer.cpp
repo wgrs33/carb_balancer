@@ -68,9 +68,6 @@ void CarbBalancer::handleCommand(CommandFrame& frame) {
             led_.setState(LedController::State::kIdle);
             Serial.println("LED on idle");
             break;
-        case Command::UpdateSettings:
-            settings_.updateFromData(frame.params.settings);
-            break;
         case Command::StartCalibration:
         case Command::StopCalibration:
         case Command::ClearCalibration:

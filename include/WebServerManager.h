@@ -8,20 +8,25 @@
 #include "AdcReader.h"
 #include "Frames.h"
 #include "LedController.h"
+#include "Settings.h"
 #include "SPSCQueue.h"
 
 /**
  * @brief Sets up the WiFi AP, HTTP routes, and WebSocket for live data push.
  *
- * Commands received from the web UI (JSON over WebSocket):
- *   {"cmd":"start"}                  → onStart callback
- *   {"cmd":"stop"}                   → onStop callback
- *   {"cmd":"calibrate","channel":N}  → onCalibrate(channel) callback
- *   {"cmd":"cal_stop"}               → onCalStop callback
- *   {"cmd":"cal_clear","channel":N}  → onCalClear(channel) callback
- *   {"cmd":"serial","enabled":bool}  → onSerialToggle(enabled) callback
+ * Session lifecycle:
+ *   - On connect:    browser sends set_session with channel_mask, reference_channel,
+ *                    update_interval_ms (applied to RAM, not persisted).
+ *   - On disconnect: ADC sampling is stopped automatically.
+ *   - WiFi credentials are the only settings persisted to NVS, written only when
+ *                    the browser explicitly sends set_wifi.
  *
- * Callbacks are registered by CarbBalancer in begin() to avoid circular dependencies.
+ * WebSocket commands (browser → firmware):
+ *   {"cmd":"start"}                                       → onStart callback
+ *   {"cmd":"stop"}                                        → onStop callback
+ *   {"cmd":"set_session","channel_mask":N,...}            → apply session settings to RAM
+ *   {"cmd":"get_wifi"}                                    → reply with WiFi credentials
+ *   {"cmd":"set_wifi","ap_ssid":"...","ap_password":"…"}  → save WiFi to NVS, reconfigure AP
  */
 class WebServerManager {
 public:
@@ -29,32 +34,31 @@ public:
 
     void begin();
 
-    /** @brief Send a batch of pre-EMA waveform samples to all clients. */
     void broadcastData();
 
-    void update(); // called periodically by timer to push data to clients
+    void update();
 
     // --- callback registration ---
-    void setOnStart(std::function<void()> cb)                   { on_start_ = cb; }
-    void setOnStop(std::function<void()> cb)                    { on_stop_ = cb; }
-    void setOnSettingsUpdate(std::function<void(SettingsFrame&)> cb) { on_settings_update_ = cb; }
+    void setOnStart(std::function<void()> cb) { on_start_ = cb; }
+    void setOnStop(std::function<void()> cb)  { on_stop_  = cb; }
 
 private:
-    SettingsFrame   settings_frame_;
-    AsyncWebServer  server_;
-    AsyncWebSocket  ws_;
+    Settings&      settings_;
+    SettingsFrame& settings_frame_;
+    AsyncWebServer server_;
+    AsyncWebSocket ws_;
 
     SPSCQueue<RawFrame, 256> (&adc_sample_queue_)[kMaxCylinders];
-    esp_timer_handle_t webui_timer_ = nullptr; //< Periodic timer driving data push at 10Hz
+    esp_timer_handle_t webui_timer_ = nullptr;
 
-    std::function<void()>          on_start_;
-    std::function<void()>          on_stop_;
-    std::function<void(SettingsFrame&)> on_settings_update_;
+    std::function<void()> on_start_;
+    std::function<void()> on_stop_;
 
     void setupWifi();
     void setupRoutes();
-    void buildSettingsJson(JsonDocument& doc);
-    void applySettingsDoc(const JsonDocument& doc);
+    void handleSetSession(const JsonDocument& doc);
+    void handleGetWifi(AsyncWebSocketClient* client);
+    void handleSetWifi(const JsonDocument& doc);
     void handleCommand(const JsonDocument& doc, AsyncWebSocketClient* client);
     void onWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClient* client,
                           AwsEventType type, void* arg, uint8_t* data, size_t len);

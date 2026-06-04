@@ -5,7 +5,6 @@
 struct SettingsFrame {
     uint8_t  channel_mask;      ///< Active channels bitmask (bits 0-3 map to AIN0-AIN3)
     uint8_t  reference_channel; ///< Reference channel index; must be a set bit in channel_mask
-    uint8_t  damping;
     uint32_t update_interval_ms;
     char ap_ssid[56];
     char ap_password[64];
@@ -17,8 +16,10 @@ enum class Command : uint8_t {
     StartCalibration = 0x03,
     StopCalibration  = 0x04,
     ClearCalibration = 0x05,
-    UpdateSettings   = 0x06,
-    Unknown          = 0x07,
+    SetSession       = 0x06,
+    GetWifi          = 0x07,
+    SetWifi          = 0x08,
+    Unknown          = 0x09,
 };
 
 struct CommandFrame {
