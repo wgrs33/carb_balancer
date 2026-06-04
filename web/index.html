@@ -60,6 +60,7 @@ main {
 }
 @media (max-width: 520px) {
   main { grid-template-columns: 1fr; padding: 1rem; }
+  .s_ch_row { flex-wrap: wrap; }
 }
 
 /* Waveform plot */
@@ -106,13 +107,19 @@ main {
 .zero { color: #666; }
 
 /* Settings panel */
-#settings-panel { display: none; padding: 1.5rem; max-width: 480px; margin: 0 auto; }
+#settings-panel { display: none; padding: 1.5rem; max-width: 560px; margin: 0 auto; }
 #settings-panel h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #ccc; }
 .sgroup { background: #252525; border: 1px solid #333; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 0.75rem; }
 .srow { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: center; padding: 0.3rem 0; }
 .srow label { font-size: 0.8rem; color: #999; }
 .srow input { background: #1a1a1a; border: 1px solid #444; border-radius: 4px; color: #eee; padding: 0.35rem 0.6rem; font-size: 0.85rem; width: 100%; }
 .srow input:focus { outline: none; border-color: #4caf50; }
+.srow select { background: #1a1a1a; border: 1px solid #444; border-radius: 4px; color: #eee; padding: 0.35rem 0.6rem; font-size: 0.85rem; width: 100%; }
+.srow select:focus { outline: none; border-color: #4caf50; }
+.s_ch_row { display: flex; gap: 0.5rem; }
+.s_ch_row label { display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; color: #ccc; cursor: pointer; }
+.s_ch_row input[type=checkbox] { accent-color: #4caf50; cursor: pointer; }
+#s_ref_warn { display: none; color: #ffc107; font-size: 0.75rem; padding: 0.25rem 0; }
 #s_footer { display: flex; align-items: center; justify-content: flex-end; gap: 1rem; margin-top: 0.5rem; }
 #s_msg { font-size: 0.8rem; }
 #s_msg.ok  { color: #4caf50; }
@@ -161,10 +168,18 @@ main {
 <div id="settings-panel">
   <h2>Settings</h2>
   <div class="sgroup">
-    <div class="srow"><label>Cylinders</label>
-      <input type="number" id="s_cyl" min="1" max="4" step="1"></div>
-    <div class="srow"><label>Reference cylinder</label>
-      <input type="number" id="s_ref" min="1" max="4" step="1"></div>
+    <div class="srow" style="align-items:start">
+      <label>Active channels</label>
+      <div class="s_ch_row">
+        <label><input type="checkbox" id="s_ch0" onchange="onChannelChange()"> 1</label>
+        <label><input type="checkbox" id="s_ch1" onchange="onChannelChange()"> 2</label>
+        <label><input type="checkbox" id="s_ch2" onchange="onChannelChange()"> 3</label>
+        <label><input type="checkbox" id="s_ch3" onchange="onChannelChange()"> 4</label>
+      </div>
+    </div>
+    <div class="srow"><label>Reference channel</label>
+      <select id="s_ref"></select></div>
+    <div id="s_ref_warn">Reference channel deactivated — select a new one.</div>
     <div class="srow"><label>EMA damping (0-16)</label>
       <input type="number" id="s_damp" min="0" max="16" step="1"></div>
     <div class="srow"><label>RPM damping (0-16)</label>
@@ -190,6 +205,7 @@ main {
   var viewMode = 'gauge';
   var settingsOpen = false, settingsSaved = false;
   var lastData = null;
+  var channelMask = 0x0F;
   var cylCount = 4;
   var visibleChs = [true, true, true, true];
   var viewPts    = window.matchMedia('(max-width: 520px)').matches ? 100 : 400;
@@ -377,7 +393,9 @@ main {
       if (d.type === 'settings') {
         populateSettings(d);
         if (!running) {
-          var n = d.cylinder_count, r = d.reference_cylinder;
+          var mask = d.channel_mask || 0x0F;
+          var r = d.reference_channel || 0;
+          var n = 0; for (var i = 0; i < 4; i++) if (mask & (1 << i)) n++;
           update({ rpm: 0, ref: r,
             cylinders: Array.from({length: n}, function () { return { kpa: 0, delta_kpa: 0 }; })
           });
@@ -576,15 +594,56 @@ main {
     }
   };
 
+  function getChannelMask() {
+    var mask = 0;
+    for (var i = 0; i < 4; i++) {
+      if (document.getElementById('s_ch' + i).checked) mask |= (1 << i);
+    }
+    return mask;
+  }
+
+  function rebuildRefSelect(mask, curRef) {
+    var sel = document.getElementById('s_ref');
+    sel.innerHTML = '';
+    for (var i = 0; i < 4; i++) {
+      if (!(mask & (1 << i))) continue;
+      var opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = 'Ch ' + (i + 1);
+      sel.appendChild(opt);
+    }
+    sel.value = curRef;
+  }
+
+  window.onChannelChange = function () {
+    var mask = getChannelMask();
+    var curRef = parseInt(document.getElementById('s_ref').value, 10);
+    rebuildRefSelect(mask, curRef);
+    var warn = document.getElementById('s_ref_warn');
+    if (mask !== 0 && !(mask & (1 << curRef))) {
+      document.getElementById('s_ref').value = '';
+      warn.style.display = '';
+    } else {
+      warn.style.display = 'none';
+    }
+  };
+
   function populateSettings(d) {
-    document.getElementById('s_cyl').value      = d.cylinder_count;
-    document.getElementById('s_ref').value      = d.reference_cylinder + 1;
+    var mask  = d.channel_mask  !== undefined ? d.channel_mask  : 0x0F;
+    var refCh = d.reference_channel !== undefined ? d.reference_channel : 0;
+    channelMask = mask;
+    cylCount = 0;
+    for (var i = 0; i < 4; i++) {
+      document.getElementById('s_ch' + i).checked = !!(mask & (1 << i));
+      if (mask & (1 << i)) cylCount++;
+    }
+    rebuildRefSelect(mask, refCh);
+    document.getElementById('s_ref_warn').style.display = 'none';
     document.getElementById('s_damp').value     = d.damping;
     document.getElementById('s_rdamp').value    = d.rpm_damping;
     document.getElementById('s_interval').value = d.update_interval_ms;
     document.getElementById('s_ssid').value     = d.ap_ssid;
     document.getElementById('s_pw').value       = d.ap_password;
-    cylCount = d.cylinder_count || cylCount;
     buildWaveControls();
   }
 
@@ -597,17 +656,28 @@ main {
 
   window.saveSettings = function () {
     if (!connected) return;
-    cylCount = parseInt(document.getElementById('s_cyl').value, 10) || cylCount;
+    var mask  = getChannelMask();
+    var refCh = parseInt(document.getElementById('s_ref').value, 10);
+    if (mask === 0) { showSettingsMsg('Select at least one channel', 'err'); return; }
+    if (isNaN(refCh) || !(mask & (1 << refCh))) {
+      showSettingsMsg('Select a reference channel', 'err');
+      document.getElementById('s_ref_warn').style.display = '';
+      return;
+    }
+    document.getElementById('s_ref_warn').style.display = 'none';
+    channelMask = mask;
+    cylCount = 0;
+    for (var i = 0; i < 4; i++) if (mask & (1 << i)) cylCount++;
     settingsSaved = true;
     ws.send(JSON.stringify({
-      cmd:                  'set_settings',
-      cylinder_count:        cylCount,
-      reference_cylinder:    parseInt(document.getElementById('s_ref').value,      10) - 1,
-      damping:               parseInt(document.getElementById('s_damp').value,     10),
-      rpm_damping:           parseInt(document.getElementById('s_rdamp').value,    10),
-      update_interval_ms:    parseInt(document.getElementById('s_interval').value, 10),
-      ap_ssid:               document.getElementById('s_ssid').value,
-      ap_password:           document.getElementById('s_pw').value,
+      cmd:               'set_settings',
+      channel_mask:       mask,
+      reference_channel:  refCh,
+      damping:            parseInt(document.getElementById('s_damp').value,     10),
+      rpm_damping:        parseInt(document.getElementById('s_rdamp').value,    10),
+      update_interval_ms: parseInt(document.getElementById('s_interval').value, 10),
+      ap_ssid:            document.getElementById('s_ssid').value,
+      ap_password:        document.getElementById('s_pw').value,
     }));
   };
 
@@ -622,6 +692,7 @@ main {
 
   window.toggleRun = function () {
     if (!connected) return;
+    if (running && plot) togglePlot();
     running = !running;
     ws.send(JSON.stringify({ cmd: running ? 'start' : 'stop' }));
     var btn = document.getElementById('btn');
