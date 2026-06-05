@@ -45,9 +45,11 @@ void WebServerManager::update() {
 }
 
 void WebServerManager::broadcastData() {
+    ws_.cleanupClients();
     if (ws_.count() == 0) return;
 
-    static std::array<RawFrame, 256> samples;
+    static std::array<RawFrame, 64> samples;  // cap at 64 — avoids oversized messages
+    static char buf[3072];
     const uint8_t mask = settings_frame_.channel_mask;
     const uint8_t ref  = settings_frame_.reference_channel;
 
@@ -76,9 +78,8 @@ void WebServerManager::broadcastData() {
     doc["t0"] = t0;
     doc["dt"] = dt;
 
-    String msg;
-    serializeJson(doc, msg);
-    ws_.textAll(msg);
+    size_t len = serializeJson(doc, buf, sizeof(buf));
+    ws_.textAll(buf, len);
 }
 
 void WebServerManager::setupWifi() {
@@ -111,8 +112,6 @@ void WebServerManager::setupRoutes() {
 }
 
 void WebServerManager::handleSetSession(const JsonDocument& doc) {
-    if (on_stop_) on_stop_();
-    for (uint8_t ch = 0; ch < kMaxCylinders; ch++) adc_sample_queue_[ch].clear();
 
     if (!doc["channel_mask"].isNull()) {
         uint8_t mask = doc["channel_mask"].as<uint8_t>() & 0x0F;
