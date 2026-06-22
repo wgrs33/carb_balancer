@@ -11,7 +11,7 @@ import type { GaugeData, ServerMessage, SessionSettings } from './types';
 
 class App {
   private ws      = new WsClient();
-  private signal  = new SignalProcessor(loadSession().damping);
+  private signal  = new SignalProcessor(loadSession().damping, loadSession().rpmDamping);
   private view    = new CylinderView();
   private wave    = new WaveRenderer();
   private panel   = new SettingsPanel();
@@ -41,6 +41,7 @@ class App {
     this.wave.setCylCount(n);
     this.wave.buildControls();
     this.signal.setDamping(s.damping);
+    this.signal.setRpmDamping(s.rpmDamping);
   }
 
   // ---------------------------------------------------------------------------

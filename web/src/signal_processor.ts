@@ -1,4 +1,5 @@
 import type { RawWaveMessage, CylinderData, GaugeData, WavePoint } from './types';
+import { RpmDetector } from './rpm_detector';
 
 // MPX4250AP (VOUT = VS × (P × 0.004 − 0.04)) + 12kΩ/20kΩ divider (ratio 5/8)
 // + ADS1115 GAIN_ONE (±4.096 V, 16-bit)
@@ -11,20 +12,31 @@ export function kpaToMbar(kpa: number): number {
   return kpa * 10;
 }
 
+export function dampingToAlpha(damping: number): number {
+  return 1 / (1 + damping);
+}
+
 export class SignalProcessor {
   private emaAlpha: number;
   private emaKpa: (number | null)[] = [null, null, null, null];
+  private rpmDetector: RpmDetector;
 
-  constructor(damping: number) {
+  constructor(damping: number, rpmDamping: number) {
     this.emaAlpha = dampingToAlpha(damping);
+    this.rpmDetector = new RpmDetector(rpmDamping);
   }
 
   setDamping(damping: number): void {
     this.emaAlpha = dampingToAlpha(damping);
   }
 
+  setRpmDamping(rpmDamping: number): void {
+    this.rpmDetector.setDamping(rpmDamping);
+  }
+
   reset(): void {
     this.emaKpa = [null, null, null, null];
+    this.rpmDetector.reset();
   }
 
   process(msg: RawWaveMessage, channelMask: number, refChannel: number): GaugeData | null {
@@ -54,7 +66,12 @@ export class SignalProcessor {
       idx++;
     }
 
-    return cylinders.length ? { rpm: 0, ref: refIdx, cylinders } : null;
+    const refSamples = msg.chs[refChannel];
+    const rpm = refSamples && refSamples.length > 0
+      ? this.rpmDetector.process(refSamples, msg.t0, msg.dt)
+      : 0;
+
+    return cylinders.length ? { rpm: Math.round(rpm), ref: refIdx, cylinders } : null;
   }
 
   extractWavePoints(msg: RawWaveMessage): (WavePoint[] | null)[] {
@@ -63,8 +80,4 @@ export class SignalProcessor {
       return ch.map((raw, i) => ({ t: msg.t0 + i * msg.dt, v: adcToKpa(raw) }));
     });
   }
-}
-
-function dampingToAlpha(damping: number): number {
-  return 1 / (1 + damping);
 }
