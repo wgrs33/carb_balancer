@@ -3,17 +3,20 @@
 ## Overview
 
 A carburetor synchronization tool for up to 4 cylinders. Reads intake vacuum via analog
-sensors, displays live balance on a web UI, and streams raw ADC data over USB serial.
-All configuration is done through the web interface; no physical controls beyond a reset.
+sensors and displays live balance on a web UI. The microcontroller is responsible solely
+for ADC data acquisition and communication; all signal processing is performed in the
+Web UI. Configuration is done through the web interface; no physical controls beyond a reset.
 
 ---
 
 ## Hardware
 
 ### Microcontroller
-- **Board:** Arduino Nano ESP32
-- **SoC:** ESP32-S3 (Xtensa LX7 dual-core)
+- **Primary target:** Arduino Nano ESP32 (ESP32-S3, Xtensa LX7 dual-core)
 - **Framework:** Arduino (via arduino-esp32)
+- **Portability:** The codebase must remain portable to other Arduino-compatible platforms
+  (e.g., Raspberry Pi Pico W). All platform-specific features must be abstracted behind
+  platform-independent interfaces. See [Portability](#portability).
 
 ### Sensors
 - **Model:** MPX4250AP — absolute pressure sensor, one per active cylinder (max 4)
@@ -43,26 +46,45 @@ All configuration is done through the web interface; no physical controls beyond
 
 ## Software Architecture
 
-### Firmware
+### Firmware Responsibilities
+
+The firmware runs on the microcontroller and is responsible for exactly three things:
+
+1. **ADC acquisition** — continuously sample raw ADC values from all active channels
+2. **Data streaming** — broadcast raw ADC data to connected Web UI clients over WebSocket
+3. **Command handling** — receive and apply commands from the Web UI (e.g., settings updates)
+
+The firmware performs **no signal processing**: no filtering, no unit conversion, no RPM
+detection. All processing is delegated to the Web UI.
+
+### Web UI Responsibilities
+
+The Web UI runs in the browser and is responsible for:
+
+1. **Signal processing** — EMA smoothing, RPM detection, balance delta calculation
+2. **Unit conversion** — raw ADC → engineering units for display
+3. **Live display** — gauges and balance indicators updated in real time
+4. **Settings management** — read and write device settings via WebSocket
+
+### Language & Style
 - Language: C++ (Google C++ Style Guide, 4-space indent, 120-char line limit)
 - Naming: camelCase functions, snake_case variables, snake_case_ private members,
   PascalCase classes
-- Web server: ESPAsyncWebServer
+- Web server: ESPAsyncWebServer (or platform-equivalent)
 - Web UI assets: embedded in firmware as PROGMEM (no LittleFS/SPIFFS); generated
   by build script from source files in `web/` — never hand-edited
 - Real-time data push: WebSocket (server → browser)
 
 ### WiFi
 - Mode: **Access Point only**
-- SSID / password: configurable, stored in NVS
+- SSID / password: configurable, stored in persistent storage
 - Default SSID: `CarbBalancer`, default password: `balance1`
 
-### Persistence (NVS)
-Settings saved to NVS and restored on boot:
-- Active cylinder count (1–4)
-- Reference cylinder index (1–4)
-- Per-channel calibration offsets and gain trim
-- ADC sampling rate and averaging window
+### Persistence
+Settings saved to persistent storage and restored on boot:
+- Active channels — bitmask (`uint8_t`, bits 0-3 map to AIN0-AIN3); at least one bit must be set
+- Reference channel index (must be a set bit in the channel mask)
+- WebSocket broadcast interval (ms)
 - WiFi AP credentials
 
 ---
@@ -72,18 +94,28 @@ Settings saved to NVS and restored on boot:
 Single-page app served from PROGMEM. Communicates with firmware over WebSocket.
 
 ### Live View (main screen)
-- Bar graph / gauge per active cylinder showing current vacuum reading (in kPa or raw)
+- Bar graph / gauge per active cylinder showing current vacuum reading
 - Balance indicator: deviation of each cylinder from the reference cylinder
 - Reference cylinder highlighted visually
 - Update rate: driven by WebSocket push (≈ sampling rate)
 
-### Settings Page
-- Number of active cylinders (1–4)
-- Reference cylinder selection (any active cylinder)
-- Per-cylinder zero offset and gain trim (for calibration)
-- ADC samples-per-average and update interval
-- WiFi AP SSID and password
-- Save button → writes all settings to NVS and applies immediately
+### Settings Panel
+- Opened via the ⚙ button in the header; live view is hidden while open
+- Opening the panel automatically stops any running measurement
+- Fields: per-channel enable toggle (independently enable/disable each of channels 0-3),
+  reference channel selector (populated with only the currently active channels),
+  WebSocket broadcast interval (ms), WiFi AP SSID and password
+- On open, the UI requests current values from the firmware (`get_settings`)
+  and populates the form
+- **Reference channel validation:** whenever the active channel selection changes, the
+  reference selector is rebuilt to contain only active channels. If the previously selected
+  reference channel has been deactivated, the selector is cleared and an inline warning is
+  shown ("Reference channel deactivated — select a new one"). The Save button is blocked
+  until a valid reference is chosen.
+- Save is also blocked when no channels are active (at least one must be enabled)
+- Save button sends all fields to the firmware (`set_settings`), which applies
+  them immediately and writes to persistent storage; WiFi AP is reconfigured in-place
+- "Saved" confirmation shown for 3 s after successful save
 
 ### Web UI Development Workflow
 
@@ -107,69 +139,141 @@ tools/
 4. When UI is ready: `python tools/build_web.py` → regenerates `src/WebUI.h`
 5. Recompile firmware and flash once
 
-This means LittleFS/SPIFFS is **never used**. PROGMEM is the only deploy target.
+LittleFS/SPIFFS is **never used**. PROGMEM is the only deploy target.
 
 ---
 
-## Sampling & Processing
+## Sampling & Data Streaming
 
-### ADC acquisition
+### ADC Acquisition
 - ADS1115 runs in single-shot mode, cycling through active channels in round-robin
-- ALRT/RDY pin (GPIO3 = A2) fires a falling-edge interrupt on each completed conversion
-- ISR sets a flag only (no I2C in ISR context); `AdcReader::update()` performs the I2C read
+- ALRT/RDY pin fires a falling-edge interrupt on each completed conversion
+- ISR sets a flag only (no I2C in ISR context); the read is performed outside the ISR
+- The firmware maintains a separate sample queue per channel
+- Each sample stores a raw ADC value (uint16_t) and a timestamp (µs since boot, unsigned long)
 
-### Signal processing pipeline (per sample)
+### Broadcast (WebSocket JSON)
+
+The firmware drains each active channel's queue and broadcasts all queued samples at the
+configured interval. The `chs` array is always 4 elements long; position equals channel
+index (0-3). Inactive channels are `null`. Timing is described by `t0` and `dt` derived
+from the reference channel, so individual samples carry no per-sample timestamp:
+
+```json
+{
+  "type": "wave",
+  "t0": 1250000,
+  "dt": 5000,
+  "chs": [
+    null,
+    null,
+    [18432, 18298, 18510],
+    [18480, 18301, 18512]
+  ]
+}
 ```
-Raw ADC sample
-  → calibration  (offset + gain, integer fixed-point)
-  → EMA smoothing (α configurable, stored as int ×1000; e.g. 100 = α 0.1)
-  → ring buffer   (256 entries per channel, each entry: {value, timestamp_ms})
+
+- `t0` — µs timestamp (unsigned long) of the first sample of the reference channel in this batch
+- `dt` — average sample interval in µs between consecutive samples (derived from reference channel)
+- `chs[i]` — array of uint16_t raw ADC values for channel i, or `null` if channel i is inactive
+- Broadcast at `update_interval_ms` (default 50 ms)
+
+> **Forward-looking:** A future revision of the protocol may include processed values
+> (e.g., kPa or mbar) in addition to or instead of raw ADC data, once unit conversion
+> is validated and stable.
+
+### Settings WebSocket Commands (browser → firmware)
+
+```json
+{ "cmd": "get_settings" }
 ```
 
-### RPM detection
-- RPM is estimated from the vacuum signal itself — no separate tachometer input
-- Firmware tracks the interval between successive vacuum minima on one reference channel
-- For a 4-stroke engine: one engine cycle = 2 crankshaft revolutions
-  → `cycle_ms = 120,000 / RPM`
-- RPM is recalculated continuously and updated in the `AdcReader`
+Firmware replies to the requesting client only:
 
-### Displayed value — minimum EMA within auto-calculated window
-- `window_ms = cycle_ms × (1 + margin_percent / 100)`
-- `margin_percent` is a small configurable value (default 20%, range 0–100)
-- `minReading(channel)` scans the ring buffer backward and returns the lowest EMA value
-  within the last `window_ms` milliseconds
-- This captures the deepest vacuum pull of each cylinder's intake stroke
-- Cylinders with a higher minimum (less vacuum) indicate a carb that is open too far or has a leak
+```json
+{
+  "type": "settings",
+  "channel_mask": 13,
+  "reference_channel": 0,
+  "update_interval_ms": 50,
+  "ap_ssid": "CarbBalancer",
+  "ap_password": "balance1"
+}
+```
 
-### Broadcast
-- `minReading()` values broadcast over WebSocket at the configured update interval
-- Serial Plotter prints the same minimum values in Arduino Serial Plotter format
+`channel_mask` is a bitmask where bit _i_ enables channel _i_ (e.g. `13` = `0b1101` = channels 0, 2, 3 active).
+
+```json
+{
+  "cmd": "set_settings",
+  "channel_mask": 13,
+  "reference_channel": 0,
+  "update_interval_ms": 50,
+  "ap_ssid": "CarbBalancer",
+  "ap_password": "balance1"
+}
+```
+
+Firmware applies, saves to persistent storage, reconfigures WiFi AP, then broadcasts to all clients:
+
+```json
+{ "type": "settings_saved" }
+```
+
+### Settings REST API
+
+| Method | Path            | Body / Response                      |
+|--------|-----------------|--------------------------------------|
+| GET    | `/api/settings` | JSON object with all settings fields |
+| POST   | `/api/settings` | JSON object (partial update OK) → `{"ok":true}` |
+
+---
+
+## Calibration (Future Requirement)
+
+Calibration has been removed from the current implementation and is planned for future
+reintroduction under the following constraints:
+
+- Calibration must operate **only on raw ADC data** — it must not depend on or produce
+  unit-converted values (kPa, mbar, etc.)
+- Calibration adjustments are applied to raw ADC values, before any processing or conversion
+- The calibration model, storage format, and UI workflow are to be defined when
+  the feature is reintroduced
+- No implementation details are prescribed at this stage
+
+---
+
+## Portability
+
+The codebase must support multiple hardware targets without changes to shared logic:
+
+- **Current target:** Arduino Nano ESP32 (ESP32-S3)
+- **Planned target:** Raspberry Pi Pico W (RP2040)
+
+All platform-specific dependencies must be isolated behind abstract interfaces:
+
+- **Persistent storage** — NVS on ESP32, Flash/EEPROM on others
+- **Hardware timers** — any platform-specific timer API
+- **ADC driver** — platform-specific I2C or ADC peripheral access
+- **Any other platform peripherals**
+
+No platform-specific API (e.g., `esp_timer`, `nvs_flash`, `Preferences`) may appear
+in shared firmware logic. Platform adapters are isolated in their own modules.
 
 ---
 
 ## Testing
 
-### Firmware Unit Tests
-- Framework: [Unity](https://github.com/ThrowTheSwitch/Unity) via
-  [arduino-mock](https://github.com/ikeyasu/arduino-mock) or native C++ runner
-  (no hardware required — tests run on the host machine)
-- Test location: `test/`
-- Coverage targets:
-  - ADC value → kPa conversion (MPX4250AP transfer function + resistor divider scaling)
-  - Calibration offset and gain application
-  - Averaging logic (sliding window or accumulate-and-divide)
-  - NVS settings serialization / deserialization (with mock NVS)
-  - WebSocket JSON message formatting
-  - Active cylinder mask logic (which channels are sampled)
-
 ### Web UI Tests
-- Framework: plain browser-based or [Vitest](https://vitest.dev/) if a build step
-  is introduced later
+- Framework: [Vitest](https://vitest.dev/)
+- Test location: `web/test/`
 - Coverage targets:
   - WebSocket message parsing and gauge update logic
-  - Settings form validation (cylinder count range, offset bounds, etc.)
-  - Balance delta calculation (deviation from reference cylinder)
-- UI behaviour tested against `tools/mock_server.py` during development
+  - Active channel selection and `chs` array handling (including null entries)
+  - Balance delta calculation (deviation from reference channel)
+  - Signal processing: EMA smoothing, RPM detection, min-window scan
+  - Settings form validation (valid channel combinations, reference channel must be active)
+- UI behaviour verified against `tools/mock_server.py` during development
 
 ---
 
@@ -179,4 +283,5 @@ Raw ADC sample
 - No Bluetooth
 - No OTA update (not in initial scope)
 - No STA (client) WiFi mode
-- Max 4 cylinders; fewer can be enabled at runtime
+- Max 4 channels (AIN0-AIN3); any non-empty subset can be enabled independently at runtime
+- No signal processing in firmware (all processing in Web UI)

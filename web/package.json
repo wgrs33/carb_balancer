@@ -1,0 +1,12 @@
+{
+  "name": "carb-balancer-web",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --outfile=script.js --target=es2017 --minify",
+    "dev":   "esbuild src/main.ts --bundle --outfile=script.js --target=es2017 --watch"
+  },
+  "devDependencies": {
+    "esbuild":    "^0.24.0",
+    "typescript": "^5.6.0"
+  }
+}

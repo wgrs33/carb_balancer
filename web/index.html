@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Carb Balancer</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>Carb Balancer</h1>
+  <span id="rpm">-- RPM</span>
+  <span id="dot" title="WebSocket status">●</span>
+  <div id="hbtns">
+    <button id="btn"          class="hbtn" onclick="toggleRun()"      disabled>Start</button>
+    <button id="btn_plt"      class="hbtn" onclick="togglePlot()"     disabled>Start Plot</button>
+    <button id="btn_record"   class="hbtn" onclick="toggleRecord()"   disabled>Record</button>
+    <button id="btn_settings" class="hbtn" onclick="toggleSettings()">⚙</button>
+  </div>
+</header>
+<div id="status">--</div>
+<main id="grid"></main>
+<div id="wave-wrap">
+  <div id="wave-ctrl">
+    <div id="wave-ch-btns"></div>
+    <div class="wslider">
+      <span>Timebase</span>
+      <input type="range" id="wave-zoom" min="20" max="1200" oninput="onWaveZoom(this.value)">
+      <span id="wave-zoom-val">400</span>
+    </div>
+    <div class="wslider">
+      <span>Span</span>
+      <input type="range" id="wave-span" min="100" max="1000" value="200" oninput="onWaveSpan(this.value)">
+      <span id="wave-span-val">200</span>
+    </div>
+    <div class="wslider" id="wave-scroll-row" style="display:none">
+      <span>Scroll</span>
+      <input type="range" id="wave-scroll" min="0" max="0" value="0" oninput="onWaveScroll(this.value)">
+      <span id="wave-scroll-val"></span>
+    </div>
+  </div>
+  <canvas id="wave-canvas"></canvas>
+</div>
+
+<div id="settings-panel">
+  <h2>Settings</h2>
+  <div class="sgroup">
+    <div class="srow" style="align-items:start">
+      <label>Active channels</label>
+      <div class="s_ch_row">
+        <label><input type="checkbox" id="s_ch0" onchange="onChannelChange()"> 1</label>
+        <label><input type="checkbox" id="s_ch1" onchange="onChannelChange()"> 2</label>
+        <label><input type="checkbox" id="s_ch2" onchange="onChannelChange()"> 3</label>
+        <label><input type="checkbox" id="s_ch3" onchange="onChannelChange()"> 4</label>
+      </div>
+    </div>
+    <div class="srow"><label>Reference channel</label>
+      <select id="s_ref"></select></div>
+    <div id="s_ref_warn">Reference channel deactivated — select a new one.</div>
+    <div class="srow"><label>EMA damping (0-16)</label>
+      <input type="number" id="s_damp" min="0" max="16" step="1"></div>
+    <div class="srow"><label>RPM damping (0-16)</label>
+      <input type="number" id="s_rdamp" min="0" max="16" step="1"></div>
+    <div class="srow"><label>Update interval (ms)</label>
+      <input type="number" id="s_interval" min="50" max="5000" step="10"></div>
+  </div>
+  <div class="sgroup">
+    <div class="srow"><label>WiFi SSID</label>
+      <input type="text" id="s_ssid" maxlength="32" autocomplete="off"></div>
+    <div class="srow"><label>WiFi password</label>
+      <input type="password" id="s_pw" maxlength="63" autocomplete="new-password"></div>
+  </div>
+  <div id="s_footer">
+    <span id="s_msg"></span>
+    <button class="hbtn" id="s_save" style="background:#4caf50;color:#fff" onclick="saveSettings()">Save</button>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
