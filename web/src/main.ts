@@ -2,6 +2,7 @@ import { WsClient } from './ws_client';
 import { SignalProcessor } from './signal_processor';
 import { CylinderView } from './cylinder_view';
 import { WaveRenderer } from './wave_renderer';
+import { CsvRecorder, defaultRecordingFilename } from './csv_recorder';
 import { SettingsPanel, loadSession, saveSession } from './settings_panel';
 import type { GaugeData, ServerMessage, SessionSettings } from './types';
 
@@ -12,16 +13,18 @@ const CARD_REFRESH_MS = 200; // cylinder card refresh rate — faster is unreada
 // ---------------------------------------------------------------------------
 
 class App {
-  private ws      = new WsClient();
-  private signal  = new SignalProcessor(loadSession().damping, loadSession().rpmDamping);
-  private view    = new CylinderView();
-  private wave    = new WaveRenderer();
-  private panel   = new SettingsPanel();
+  private ws       = new WsClient();
+  private signal   = new SignalProcessor(loadSession().damping, loadSession().rpmDamping);
+  private view     = new CylinderView();
+  private wave     = new WaveRenderer();
+  private recorder = new CsvRecorder();
+  private panel    = new SettingsPanel();
 
   private session:      SessionSettings = loadSession();
   private running       = false;
   private plotting      = false;
   private settingsOpen  = false;
+  private recording     = false;
   private pending:      GaugeData | null = null;
 
   constructor() {
@@ -31,6 +34,7 @@ class App {
     this.startRaf();
     this.startCardRefresh();
     this.ws.connect();
+    window.addEventListener('pagehide', () => this.stopRecording());
   }
 
   // ---------------------------------------------------------------------------
@@ -70,6 +74,8 @@ class App {
         dot.className   = '';
         btn.disabled    = true;
         btnUsb.disabled = true;
+        this.stopRecording();
+        (document.getElementById('btn_record') as HTMLButtonElement).disabled = true;
         btn.textContent = 'Start';
         btn.className   = 'hbtn';
         this.running  = false;
@@ -87,6 +93,7 @@ class App {
         const result = this.signal.process(msg, this.session.channelMask, this.session.referenceChannel);
         if (result) this.pending = result;
         if (this.plotting) this.wave.append(msg);
+        if (this.recording) this.recorder.append(msg);
       } else if (msg.type === 'wifi') {
         this.panel.populateWifi(msg.ap_ssid, msg.ap_password);
       } else if (msg.type === 'wifi_saved') {
@@ -161,6 +168,16 @@ class App {
     this.wave.start();
     const btn = document.getElementById('btn_usb') as HTMLButtonElement;
     btn.textContent = 'Stop Plot'; btn.className = 'hbtn running';
+    (document.getElementById('btn_record') as HTMLButtonElement).disabled = false;
+  }
+
+  toggleRecord(): void {
+    if (!this.running || !this.plotting) return;
+    if (this.recording) { this.stopRecording(); return; }
+    this.recording = true;
+    this.recorder.start(this.session.channelMask);
+    const btn = document.getElementById('btn_record') as HTMLButtonElement;
+    btn.textContent = 'Stop Recording'; btn.className = 'hbtn running';
   }
 
   toggleSettings(): void {
@@ -178,6 +195,7 @@ class App {
     btn.className   = `hbtn${this.settingsOpen ? ' active' : ''}`;
 
     if (this.settingsOpen) {
+      this.stopRecording();
       if (this.running) {
         if (this.plotting) this.doStopPlot();
         this.running = false;
@@ -209,10 +227,21 @@ class App {
   }
 
   private doStopPlot(): void {
+    this.stopRecording();
     this.plotting = false;
     this.wave.stop();
     const btn = document.getElementById('btn_usb') as HTMLButtonElement;
     btn.textContent = 'Start Plot'; btn.className = 'hbtn';
+    const btnRec = document.getElementById('btn_record') as HTMLButtonElement;
+    btnRec.disabled = true;
+  }
+
+  private stopRecording(): void {
+    if (!this.recording) return;
+    this.recording = false;
+    this.recorder.stop(defaultRecordingFilename());
+    const btn = document.getElementById('btn_record') as HTMLButtonElement;
+    btn.textContent = 'Record'; btn.className = 'hbtn';
   }
 }
 
@@ -234,6 +263,7 @@ declare global {
   interface Window {
     toggleRun():          void;
     togglePlot():         void;
+    toggleRecord():       void;
     toggleSettings():     void;
     onChannelChange():    void;
     saveSettings():       void;
@@ -246,6 +276,7 @@ declare global {
 const app = new App();
 window.toggleRun       = () => app.toggleRun();
 window.togglePlot      = () => app.togglePlot();
+window.toggleRecord    = () => app.toggleRecord();
 window.toggleSettings  = () => app.toggleSettings();
 window.onChannelChange = () => app.onChannelChange();
 window.saveSettings    = () => app.saveSettings();
