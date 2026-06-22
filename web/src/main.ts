@@ -5,6 +5,8 @@ import { WaveRenderer } from './wave_renderer';
 import { SettingsPanel, loadSession, saveSession } from './settings_panel';
 import type { GaugeData, ServerMessage, SessionSettings } from './types';
 
+const CARD_REFRESH_MS = 200; // cylinder card refresh rate — faster is unreadable
+
 // ---------------------------------------------------------------------------
 // App — wires all modules together
 // ---------------------------------------------------------------------------
@@ -27,6 +29,7 @@ class App {
     this.wireWs();
     this.wirePanel();
     this.startRaf();
+    this.startCardRefresh();
     this.ws.connect();
   }
 
@@ -115,19 +118,25 @@ class App {
   }
 
   // ---------------------------------------------------------------------------
-  // RAF loop — all DOM rendering happens here
+  // Rendering — wave plot runs every frame, cards refresh on a slower timer
+  // (full RAF rate makes the kPa/delta numbers unreadable)
   // ---------------------------------------------------------------------------
 
   private startRaf(): void {
     const tick = () => {
-      if (this.pending) {
-        if (this.running) this.view.update(this.pending);
-        this.pending = null;
-      }
       this.wave.drawFrame();
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
+  }
+
+  private startCardRefresh(): void {
+    setInterval(() => {
+      if (this.pending) {
+        if (this.running) this.view.update(this.pending);
+        this.pending = null;
+      }
+    }, CARD_REFRESH_MS);
   }
 
   // ---------------------------------------------------------------------------
