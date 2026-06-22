@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ArduinoJson.h>
+#include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
 #include <functional>
 #include <esp_timer.h>
@@ -38,6 +39,9 @@ public:
 
     void update();
 
+    /// Services pending captive-portal DNS queries; call frequently from a task loop.
+    void processDns() { dns_server_.processNextRequest(); }
+
     // --- callback registration ---
     void setOnStart(std::function<void()> cb) { on_start_ = cb; }
     void setOnStop(std::function<void()> cb)  { on_stop_  = cb; }
@@ -47,6 +51,7 @@ private:
     SettingsFrame& settings_frame_;
     AsyncWebServer server_;
     AsyncWebSocket ws_;
+    DNSServer      dns_server_;
 
     SPSCQueue<RawFrame, 256> (&adc_sample_queue_)[kMaxCylinders];
     esp_timer_handle_t webui_timer_ = nullptr;

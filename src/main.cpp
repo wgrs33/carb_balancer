@@ -30,6 +30,7 @@ void webServerTask(void *pvParameters) {
     });
 
     for (;;) {
+        web_server->processDns();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }

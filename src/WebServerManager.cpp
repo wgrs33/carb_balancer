@@ -95,6 +95,11 @@ void WebServerManager::setupWifi() {
     } else {
         Serial.println("[mdns] failed to start");
     }
+
+    // Answer every DNS query with our own IP so phones/laptops connecting to the
+    // AP auto-pop their captive-portal sign-in page instead of needing the user
+    // to type carb.local / the AP IP manually.
+    dns_server_.start(53, "*", WiFi.softAPIP());
 }
 
 void WebServerManager::setupRoutes() {
@@ -108,6 +113,12 @@ void WebServerManager::setupRoutes() {
 
     server_.on("/script.js", HTTP_GET, [](AsyncWebServerRequest* request) {
         request->send_P(200, "application/javascript", JS);
+    });
+
+    // Captive-portal probe URLs (Apple/Android/Windows) and anything else
+    // unmatched land here and get sent to the real page.
+    server_.onNotFound([](AsyncWebServerRequest* request) {
+        request->redirect("/");
     });
 }
 
