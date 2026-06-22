@@ -26,10 +26,6 @@ h1 { font-size: 1.05rem; font-weight: 600; flex: 1; }
 #btn.running { background: #e53935; }
 #btn_usb   { background: #1565c0; color: #fff; }
 #btn_usb.running { background: #e53935; }
-#sel_view {
-  background: #333; color: #eee; border: 1px solid #555; border-radius: 4px;
-  padding: 0.35rem 0.5rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
-}
 #btn_settings { background: #333; color: #eee; border: 1px solid #555; }
 #btn_settings.active { border-color: #4caf50; color: #4caf50; }
 
@@ -82,17 +78,6 @@ main {
 .cyl-kpa   { font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .cyl-unit  { font-size: 0.7rem; color: #777; margin-top: 0.1rem; }
 .cyl-delta { font-size: 0.8rem; margin-top: 0.5rem; font-variant-numeric: tabular-nums; }
-
-/* Gauge view */
-.gauge-card {
-  background: #252525; border: 1px solid #333; border-radius: 8px;
-  padding: 0.75rem; text-align: center;
-  height: 300px; box-sizing: border-box; overflow: hidden;
-}
-.gauge-card.ref { border-color: #4caf50; }
-.gauge-label { font-size: 0.7rem; color: #777; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; }
-.gauge-svg svg { max-height: 230px; }
-.gauge-delta { font-size: 0.8rem; margin-top: 0.2rem; font-variant-numeric: tabular-nums; }
 
 /* Shared delta colours */
 .pos  { color: #ef5350; }

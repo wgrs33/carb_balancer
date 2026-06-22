@@ -1,6 +1,6 @@
 # tools/build_web.py  (run before each build)
 
-import os
+import subprocess
 from pathlib import Path
 
 Import("env")  # noqa: F821  – SCons injects this
@@ -26,7 +26,29 @@ gen_dir.mkdir(parents=True, exist_ok=True)
 # Inject generated/ into the compiler include path
 env.Append(CPPPATH=[str(gen_dir)])           # noqa: F821
 
+# ---------------------------------------------------------------------------
+# TypeScript build
+# ---------------------------------------------------------------------------
+web_dir = project_dir / "web"
+
+if not (web_dir / "node_modules").exists():
+    print("[codegen] npm install ...")
+    result = subprocess.run(["npm", "install"], cwd=web_dir, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"[codegen] npm install failed:\n{result.stderr}")
+        exit(1)
+    print("[codegen] npm install done")
+
+print("[codegen] npm run build ...")
+result = subprocess.run(["npm", "run", "build"], cwd=web_dir, capture_output=True, text=True)
+if result.returncode != 0:
+    print(f"[codegen] npm run build failed:\n{result.stderr}")
+    exit(1)
+print("[codegen] TypeScript build done")
+
+# ---------------------------------------------------------------------------
 # Map:  output_header -> (C variable name, source file relative to project_dir)
+# ---------------------------------------------------------------------------
 files = {
     "WebUI.h": ("HTML", "web/index.html"),
     "WebCSS.h": ("CSS", "web/styles.css"),

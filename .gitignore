@@ -8,6 +8,8 @@ local/
 
 # Dependencies
 node_modules/
+script.js
+package-lock.json
 
 # Build output
 dist/
