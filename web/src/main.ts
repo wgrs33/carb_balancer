@@ -59,12 +59,12 @@ class App {
     this.ws.onStateChange = (state) => {
       const dot    = document.getElementById('dot')!;
       const btn    = document.getElementById('btn') as HTMLButtonElement;
-      const btnUsb = document.getElementById('btn_usb') as HTMLButtonElement;
+      const btnUsb = document.getElementById('btn_plt') as HTMLButtonElement;
 
       if (state === 'connected') {
         dot.className  = 'ok';
         btn.disabled   = false;
-        btnUsb.disabled = false;
+        btnUsb.disabled = true; // stays disabled until ADC is actually started
         const s = loadSession();
         this.applySession(s);
         this.signal.reset();
@@ -113,6 +113,7 @@ class App {
         this.running = false;
         const btn = document.getElementById('btn') as HTMLButtonElement;
         btn.textContent = 'Start'; btn.className = 'hbtn';
+        (document.getElementById('btn_plt') as HTMLButtonElement).disabled = true;
         this.ws.sendCommand('stop');
       }
       if (this.plotting) this.doStopPlot();
@@ -157,6 +158,7 @@ class App {
     const btn = document.getElementById('btn') as HTMLButtonElement;
     btn.textContent = this.running ? 'Stop' : 'Start';
     btn.className   = `hbtn${this.running ? ' running' : ''}`;
+    (document.getElementById('btn_plt') as HTMLButtonElement).disabled = !this.running;
     this.ws.sendCommand(this.running ? 'start' : 'stop');
     if (!this.running) { this.signal.reset(); this.pending = null; }
   }
@@ -166,7 +168,7 @@ class App {
     if (this.plotting) { this.doStopPlot(); return; }
     this.plotting = true;
     this.wave.start();
-    const btn = document.getElementById('btn_usb') as HTMLButtonElement;
+    const btn = document.getElementById('btn_plt') as HTMLButtonElement;
     btn.textContent = 'Stop Plot'; btn.className = 'hbtn running';
     (document.getElementById('btn_record') as HTMLButtonElement).disabled = false;
   }
@@ -201,6 +203,7 @@ class App {
         this.running = false;
         const btnRun = document.getElementById('btn') as HTMLButtonElement;
         btnRun.textContent = 'Start'; btnRun.className = 'hbtn';
+        (document.getElementById('btn_plt') as HTMLButtonElement).disabled = true;
         this.ws.sendCommand('stop');
       }
       this.panel.populate();
@@ -230,7 +233,7 @@ class App {
     this.stopRecording();
     this.plotting = false;
     this.wave.stop();
-    const btn = document.getElementById('btn_usb') as HTMLButtonElement;
+    const btn = document.getElementById('btn_plt') as HTMLButtonElement;
     btn.textContent = 'Start Plot'; btn.className = 'hbtn';
     const btnRec = document.getElementById('btn_record') as HTMLButtonElement;
     btnRec.disabled = true;

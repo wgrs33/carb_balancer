@@ -24,8 +24,10 @@ h1 { font-size: 1.05rem; font-weight: 600; flex: 1; }
 .hbtn:disabled { background: #555 !important; cursor: default; }
 #btn       { background: #4caf50; color: #fff; }
 #btn.running { background: #e53935; }
-#btn_usb   { background: #1565c0; color: #fff; }
-#btn_usb.running { background: #e53935; }
+#btn_plt      { background: #1565c0; color: #fff; }
+#btn_plt.running { background: #e53935; }
+#btn_record   { background: #fff; color: #222; }
+#btn_record.running { background: #e53935; color: #fff; }
 #btn_settings { background: #333; color: #eee; border: 1px solid #555; }
 #btn_settings.active { border-color: #4caf50; color: #4caf50; }
 
