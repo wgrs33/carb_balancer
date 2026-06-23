@@ -1,16 +1,17 @@
 import type { GaugeData } from './types';
 
 export class CylinderView {
-  private count = 0;
+  private channels: number[] = [];
 
-  setCount(n: number): void {
-    this.count = n;
+  setChannels(mask: number): void {
+    this.channels = [];
+    for (let c = 0; c < 4; c++) if (mask & (1 << c)) this.channels.push(c);
     this.rebuild();
   }
 
   update(d: GaugeData): void {
     const grid = document.getElementById('grid')!;
-    if (grid.children.length !== d.cylinders.length) this.setCount(d.cylinders.length);
+    if (grid.children.length !== d.cylinders.length) this.rebuild();
 
     document.getElementById('rpm')!.textContent =
       d.rpm > 0 ? `${d.rpm} RPM` : '-- RPM';
@@ -35,8 +36,8 @@ export class CylinderView {
 
   private rebuild(): void {
     const grid = document.getElementById('grid')!;
-    grid.innerHTML = Array.from({ length: this.count }, (_, i) =>
-      `<div class="cyl"><div class="cyl-label">Cyl ${i + 1}</div><div class="cyl-kpa">--.-</div><div class="cyl-unit">kPa</div><div class="cyl-delta zero">---</div></div>`
+    grid.innerHTML = this.channels.map((ch) =>
+      `<div class="cyl"><div class="cyl-label">Cyl ${ch + 1}</div><div class="cyl-kpa">--.-</div><div class="cyl-unit">kPa</div><div class="cyl-delta zero">---</div></div>`
     ).join('');
   }
 

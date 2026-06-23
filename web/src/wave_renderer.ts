@@ -16,7 +16,7 @@ export class WaveRenderer {
   private viewPts    = window.matchMedia('(max-width: 520px)').matches ? 100 : 400;
   private viewOffset = 0;
   private waveSpan   = 200;
-  private cylCount   = 0;
+  private channels: number[] = [];
 
   private active = false;  // collecting live data + rendering
   private frozen = false;  // data frozen, still rendering last frame
@@ -46,7 +46,10 @@ export class WaveRenderer {
   // Configuration
   // ---------------------------------------------------------------------------
 
-  setCylCount(n: number): void { this.cylCount = n; }
+  setChannels(mask: number): void {
+    this.channels = [];
+    for (let c = 0; c < 4; c++) if (mask & (1 << c)) this.channels.push(c);
+  }
   setViewPts(n: number): void  { this.viewPts = n; }
   setWaveSpan(n: number): void { this.waveSpan = n; }
 
@@ -57,13 +60,12 @@ export class WaveRenderer {
   buildControls(): void {
     const ctrl = document.getElementById('wave-ch-btns')!;
     ctrl.innerHTML = '';
-    for (let c = 0; c < this.cylCount; c++) {
+    for (const ch of this.channels) {
       const btn = document.createElement('button');
-      btn.textContent = `Cyl ${c + 1}`;
-      btn.style.color = CH_COLORS[c];
-      btn.style.borderColor = CH_COLORS[c];
-      btn.className = this.visibleChs[c] ? '' : 'off';
-      const ch = c;
+      btn.textContent = `Cyl ${ch + 1}`;
+      btn.style.color = CH_COLORS[ch];
+      btn.style.borderColor = CH_COLORS[ch];
+      btn.className = this.visibleChs[ch] ? '' : 'off';
       btn.onclick = () => {
         this.visibleChs[ch] = !this.visibleChs[ch];
         btn.className = this.visibleChs[ch] ? '' : 'off';
@@ -107,7 +109,7 @@ export class WaveRenderer {
 
   private maxDataLen(): number {
     let n = 0;
-    for (let c = 0; c < this.cylCount; c++) n = Math.max(n, this.waveChs[c]?.length ?? 0);
+    for (const ch of this.channels) n = Math.max(n, this.waveChs[ch]?.length ?? 0);
     return n;
   }
 
@@ -143,13 +145,13 @@ export class WaveRenderer {
     let yMin = Infinity, yMax = -Infinity;
 
     if (showLines) {
-      for (let c = 0; c < this.cylCount; c++) {
-        const d   = this.waveChs[c] ?? [];
+      for (const ch of this.channels) {
+        const d   = this.waveChs[ch] ?? [];
         const end   = d.length - this.viewOffset;
         const start = Math.max(0, end - this.viewPts);
         const sl    = d.slice(start, end);
         slices.push(sl);
-        if (!this.visibleChs[c]) continue;
+        if (!this.visibleChs[ch]) continue;
         for (const pt of sl) { yMin = Math.min(yMin, pt.v); yMax = Math.max(yMax, pt.v); }
       }
     }
@@ -174,20 +176,21 @@ export class WaveRenderer {
     ctx.fillText('kPa', 2, mt + 9);
 
     // Channel legend
-    for (let c = 0; c < this.cylCount; c++) {
-      const lx = ml + 6 + c * 58;
-      ctx.fillStyle = CH_COLORS[c]; ctx.fillRect(lx, mt + 2, 12, 2);
+    this.channels.forEach((ch, pos) => {
+      const lx = ml + 6 + pos * 58;
+      ctx.fillStyle = CH_COLORS[ch]; ctx.fillRect(lx, mt + 2, 12, 2);
       ctx.fillStyle = '#999'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
-      ctx.fillText(`Cyl ${c + 1}`, lx + 15, mt + 6);
-    }
+      ctx.fillText(`Cyl ${ch + 1}`, lx + 15, mt + 6);
+    });
 
     // Waveforms
     if (showLines && slices.length > 0) {
-      for (let c = 0; c < this.cylCount; c++) {
-        const sl = slices[c];
-        if (!this.visibleChs[c] || sl.length < 2) continue;
+      for (let pos = 0; pos < this.channels.length; pos++) {
+        const ch = this.channels[pos];
+        const sl = slices[pos];
+        if (!this.visibleChs[ch] || sl.length < 2) continue;
         const off = this.viewPts - sl.length;
-        ctx.strokeStyle = CH_COLORS[c]; ctx.lineWidth = 1.5; ctx.beginPath();
+        ctx.strokeStyle = CH_COLORS[ch]; ctx.lineWidth = 1.5; ctx.beginPath();
         for (let i = 0; i < sl.length; i++) {
           const px = tx(off + i), py = ty(sl[i].v);
           if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);

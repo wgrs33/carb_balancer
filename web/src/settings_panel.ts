@@ -64,7 +64,7 @@ export class SettingsPanel {
     const warn = this.el('s_ref_warn');
     if (mask !== 0 && !(mask & (1 << curRef))) {
       this.select('s_ref').value = '';
-      warn.style.display = '';
+      warn.style.display = 'block';
     } else {
       warn.style.display = 'none';
     }
@@ -76,7 +76,7 @@ export class SettingsPanel {
     if (mask === 0) { this.showMsg('Select at least one channel', 'err'); return; }
     if (isNaN(refCh) || !(mask & (1 << refCh))) {
       this.showMsg('Select a reference channel', 'err');
-      this.el('s_ref_warn').style.display = '';
+      this.el('s_ref_warn').style.display = 'block';
       return;
     }
     this.el('s_ref_warn').style.display = 'none';

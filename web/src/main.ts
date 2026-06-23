@@ -43,9 +43,8 @@ class App {
 
   private applySession(s: SessionSettings): void {
     this.session = s;
-    const n = countActive(s.channelMask);
-    this.view.setCount(n);
-    this.wave.setCylCount(n);
+    this.view.setChannels(s.channelMask);
+    this.wave.setChannels(s.channelMask);
     this.wave.buildControls();
     this.signal.setDamping(s.damping);
     this.signal.setRpmDamping(s.rpmDamping);
@@ -246,16 +245,6 @@ class App {
     const btn = document.getElementById('btn_record') as HTMLButtonElement;
     btn.textContent = 'Record'; btn.className = 'hbtn';
   }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function countActive(mask: number): number {
-  let n = 0;
-  for (let i = 0; i < 4; i++) if (mask & (1 << i)) n++;
-  return n;
 }
 
 // ---------------------------------------------------------------------------
