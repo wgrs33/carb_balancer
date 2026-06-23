@@ -6,6 +6,9 @@ on:
       - 'web/**'
       - '.github/workflows/build-web.yml'
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
